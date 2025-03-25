@@ -1,0 +1,125 @@
+﻿@page "/indexeddb"
+@inject IJSRuntime JS
+
+<h3>IndexedDB 操作範例</h3>
+
+<button @onclick="AddItem">新增資料</button>
+<button @onclick="LoadItems">讀取所有資料</button>
+<button @onclick="LoadItemById">根據 ID 讀取資料</button>
+<button @onclick="UpdateItem">修改資料</button>
+<button @onclick="DeleteItem">刪除資料</button>
+<button @onclick="ClearStore">清空資料庫</button>
+<button @onclick="ResetDatabase">重置 ID</button>
+<button @onclick="ListAllDatabases">列出所有資料庫</button>
+
+<ul>
+    @foreach (var item in items)
+    {
+        <li>ID: @item.Id, 名稱: @item.Name</li>
+    }
+</ul>
+
+<ul>
+    @foreach (var db in databases)
+    {
+        <li>
+            <strong>@db</strong>
+            <button @onclick="() => ListStores(db)">查看 Stores</button>
+            <ul>
+                @if (storeNames.ContainsKey(db))
+                {
+                    @foreach (var store in storeNames[db])
+                    {
+                        <li>🔹 @store</li>
+                    }
+                }
+            </ul>
+        </li>
+    }
+</ul>
+
+@code {
+    private List<MyItem> items = new();
+    private string dbName = "MyDatabase";
+    private string storeName = "MyStore";
+    private int testId = 1; // 用來測試更新與刪除
+
+    private async Task AddItem()
+    {
+        var newItem = new { Name = "測試資料 " + DateTime.Now };
+        await JS.InvokeVoidAsync("indexedDBHelper.addItem", dbName, storeName, newItem);
+    }
+
+    private async Task LoadItems()
+    {
+        var result = await JS.InvokeAsync<MyItem[]>("indexedDBHelper.getItems", dbName, storeName);
+        items = result.ToList();
+    }
+
+    private async Task LoadItemById()
+    {
+        var result = await JS.InvokeAsync<MyItem>("indexedDBHelper.getItemById", dbName, storeName, testId);
+        if (result != null)
+        {
+            items = new List<MyItem> { result };
+        }
+    }
+
+    private async Task UpdateItem()
+    {
+        var updatedItem = new { Id = testId, Name = "修改後資料 " + DateTime.Now };
+        await JS.InvokeVoidAsync("indexedDBHelper.updateItem", dbName, storeName, updatedItem);
+    }
+
+    private async Task DeleteItem()
+    {
+        await JS.InvokeVoidAsync("indexedDBHelper.deleteItem", dbName, storeName, testId);
+    }
+
+    private async Task ClearStore()
+    {
+        await JS.InvokeVoidAsync("indexedDBHelper.clearStore", dbName, storeName);
+    }
+
+    private async Task ResetDatabase()
+    {
+        await JS.InvokeVoidAsync("indexedDBHelper.deleteDatabase", dbName);
+    }
+
+    private async Task UploadFile(ChangeEventArgs e)
+    {
+        if (e.Value is not string fileInputId) return;
+
+        var files = await JS.InvokeAsync<IJSObjectReference>("window.indexedDBHelper.getFileInputFiles", fileInputId);
+        if (files is null) return;
+
+        var fileContent = await files.InvokeAsync<string>("text"); // 讀取檔案內容
+        var jsonData = System.Text.Json.JsonSerializer.Deserialize<List<MyItem>>(fileContent);
+
+        if (jsonData is not null)
+        {
+            await JS.InvokeVoidAsync("indexedDBHelper.replaceAllItems", dbName, storeName, jsonData);
+            await LoadItems();
+        }
+    }
+
+    private List<string> databases = new();
+    private Dictionary<string, List<string>> storeNames = new();
+
+    private async Task ListAllDatabases()
+    {
+        databases = await JS.InvokeAsync<List<string>>("indexedDBHelper.listDatabases");
+    }
+
+    private async Task ListStores(string dbName)
+    {
+        var stores = await JS.InvokeAsync<List<string>>("indexedDBHelper.listStores", dbName);
+        storeNames[dbName] = stores;
+    }
+
+    private class MyItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+}
